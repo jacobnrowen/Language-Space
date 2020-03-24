@@ -8,6 +8,7 @@ class Syllable:
     def __init__(self,stress=0,heavy=False, num=-1):
         self.stress = stress
         self.heavy = heavy
+        self.num = num
     def __str__(self):
         result = 'S' if self.heavy else 's'
         if self.stress==1:
@@ -22,20 +23,89 @@ class Syllable:
     
 class Foot():
     
-    def __init__(self,syllables,headedness,directionality):
+    def __init__(self,syllables,headedness):
         self.syllables = syllables
         if headedness == -1:
-            self.syllables[0] = Syllable(stress=1, num=syllables[0].num)
+            self.syllables[0] = Syllable(stress = 1, num=syllables[0].num)
         else:
-            self.syllables[-1] = Syllable(stress=1, num=syllables[-1].num)
+            self.syllables[-1] = Syllable(stress = 1, num=syllables[-1].num)
         self.headedness = headedness
-        self.directionality = directionality
+    def make_primary(self):
+        if self.headedness == -1:
+            self.syllables[0] = Syllable(stress = 2, num=self.syllables[0].num)
+        else:
+            self.syllables[-1] = Syllable(stress = 2, num=self.syllables[-1].num)
     def __len__(self):
         return len(self.syllables)
     def __str__(self):
         return '('+str(self.syllables)[1:-1]+')'
     def __repr__(self):
         return str(self)
+    
+    
+class Footed_Word:
+    
+    def __init__(self, syllables, properties):
+        self.syllables = syllables.copy()
+        self.properties = properties
+        self.feet = []
+        self.unfootable = False
+        self.unfooted = ''
+        
+        if properties['extrametricality'] == 1:
+            self.syllables.pop()
+        
+        if properties['iterativity'] == 1:
+            if len(self.syllables) % 2 == 0:
+                for i in range(0,len(self.syllables),2):
+                    self.feet.append(Foot(self.syllables[i:i+2],self.properties['foot_headedness']))
+            else:
+                if properties['directionality'] == 1:
+                    if self.properties['degenerate_feet'] == 1:
+                        self.feet.append(Foot(self.syllables[:1],self.properties['foot_headedness']))
+                    else:
+                        self.unfootable = True
+                        self.unfooted = str(self.syllables[0])
+                    for i in range(1,len(self.syllables),2):
+                        self.feet.append(Foot(self.syllables[i:i+2],self.properties['foot_headedness']))
+                else:
+                    for i in range(0,len(self.syllables)-1,2):
+                        self.feet.append(Foot(self.syllables[i:i+2],self.properties['foot_headedness']))
+                    if self.properties['degenerate_feet'] == 1:
+                        self.feet.append(Foot(self.syllables[-1:],self.properties['foot_headedness']))
+                    else:
+                        self.unfootable = True
+                        self.unfooted = str(self.syllables[-1])
+        else:
+            if properties['directionality'] == 1:
+                self.feet.append(Foot(self.syllables[-2:],self.properties['foot_headedness']))
+                for i in self.syllables[:-2]:
+                    self.unfooted += str(i)
+            else:
+                self.feet.append(Foot(self.syllables[:2],self.properties['foot_headedness']))
+                for i in self.syllables[2:]:
+                    self.unfooted += str(i)
+                    
+        if properties['word_headedness'] == 1:
+            self.feet[-1].make_primary()
+        else:
+            self.feet[0].make_primary()
+    
+    def __str__(self):
+        result = ''
+        feet_strings = ''
+        for i in self.feet:
+            feet_strings+=str(i)
+        if self.properties['directionality'] == 1:
+            result = self.unfooted + feet_strings
+        else:
+            result = feet_strings + self.unfooted
+        if self.properties['extrametricality'] == 1:
+            result += '<' + str(Syllable(num=len(self.syllables))) + '>'
+        return result
+    def __repr__(self):
+        return str(self)
+        
         
 
 class Language:
@@ -45,103 +115,43 @@ class Language:
         for i in range(4,9):
             self.words.append([])
             for j in range(i):
-                self.words[i-4].append(Syllable(num=i-4))
-        self.properties = {prop: 0 for prop in ["extrametricality",
-                "foot_headedness", "directionality", "iterativity", "degenerate_feet", "word_headedness"]}
-        self.possible_feet = []
-        self.make_possible_feet()
-    
-    def make_possible_feet(self):
-        self.possible_feet = []
-        if self.properties['iterativity']!=1:
-            opts = [(1,1),(1,-1),(-1,1),(-1,-1)]
-            for index, word in enumerate(self.words):
-                self.possible_feet.append([])
-                for opt in opts:
-                    (headedness,directionality) = opt
-                    if directionality == -1:
-                        self.possible_feet[index].append(Foot(word[:2],headedness,directionality))
-                    else:
-                        self.possible_feet[index].append(Foot(word[-2:],headedness,directionality))       
-        else:
-            opts = [(1,1),(1,-1),(-1,1),(-1,-1)]
-            for index, word in enumerate(self.words):
-                self.possible_feet.append([])
-                for opt in opts:
-                    (headedness,directionality) = opt
-                    if len(word) % 2 == 0:
-                        for i in range(0,len(word),2):
-                            self.possible_feet[index].append(Foot(word[i:i+2],headedness,directionality))
-                    else:
-                        if directionality == -1:
-                            for i in range(0,len(word)-2,2):
-                                self.possible_feet[index].append(Foot(word[i:i+2],headedness,directionality))
-                            self.possible_feet[index].append(Foot(word[-1],headedness,directionality))
-                        else:
-                            for i in range(len(word)-1,1,-2):
-                                self.possible_feet[index].append(Foot(word[i-1:i+1],headedness,directionality))
-                            self.possible_feet[index].append(Foot(word[0],headedness,directionality))
+                self.words[i-4].append(Syllable(num=j))
+        self.properties = {prop: 0 for prop in 
+                   ["iterativity","directionality", "extrametricality",
+                    "foot_headedness", "degenerate_feet", "word_headedness"]}
+        
+        self.possible_footings = []
+        l = [-1,1]
+        opts = [[a,b,c,d,e,f] for a in l for b in l for c in l for d in l for e in l for f in l]
+        for index,word in enumerate(self.words):
+            self.possible_footings.append([])
+            for opt in opts:
+                props = {}
+                for i,prop in enumerate(self.properties):
+                    props[prop] = opt[i]
+                self.possible_footings[index].append(Footed_Word(word,props))
+        
+        
+    def update(self):
+        for word in self.possible_footings:
+            for footing in word:
+                for prop in footing.properties:
+                    if self.properties[prop] != 0:
+                        if self.properties[prop] != footing.properties[prop]:
+                            word.remove(footing)
+                    
     
     def __str__(self):
         return str(self.properties)
     def __repr__(self):
         return str(self)
-    def impossible(self):
-        raise Exception("Combination of parameters impossible:\n"+str(self))
     
-    def apply_properties(self):
-        for i in self.properties:
-            if self.properties[i] != 0:
-                self.get_attr(self,'apply_'+i)()
-                self.check_footability(i)
-    def check_footability(self, prop):
-        #Check that there is at least one comb
-        if self.properties['iterativity']!=1:
-            for i in self.possible_feet:
-                if len(i) == 0:
-                    self.impossible()
-                
-                
-                
-                
-    def apply_extrametricality(self):
-        if (self.properties['extrametricality'] == 1):
-            self.properties['extrametricality'] = 2 #Ensures won't happen again
-            for i in self.words:
-                i.pop()
-            self.make_possible_feet()
-    
-    
-    def removal_helper(self,check):
-        for i in self.possible_feet:
-            for j in i:
-                if (check(j)):
-                    i.remove(j)
-    
-    def apply_foot_headedness(self):
-        if self.properties['foot_headedness'] != 0:
-            self.removal_helper(lambda x:
-                x.headedness != self.properties['foot_headedness'])
-    def apply_directionality(self):
-        if self.properties['directionality'] != 0:
-            self.removal_helper(lambda x:
-                x.directionality != self.properties['directionality'])
-    
-    def apply_degenerate_feet(self):
-        if (self.properties['degenerate_feet'] == -1):
-            if (self.properties['iterativity'] == 1):
-                self.removal_helper(lambda x: len(x) != 2)
-    
-    def apply_word_headedness(self):
-        pass
-
-    def apply_iterativity(self):
-        if (self.properties['iterativity'] == 1):
-            self.properties['iterativity'] = 2 #Ensures won't happen again
-            self.make_possible_feet()
 
 
-
+lang = Language()
+s = {str(i) for i in lang.possible_footings[0]}
+[print(i) for i in s]
+print(len(s))
 
 
 
